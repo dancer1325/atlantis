@@ -1291,20 +1291,24 @@ Setting this to `false` can be useful in an air-gapped environment where a downl
 
 ### `--use-tf-plugin-cache`
 
-```bash
-atlantis server --use-tf-plugin-cache=false
-# or
-ATLANTIS_USE_TF_PLUGIN_CACHE=false
-```
+* ways to disable terraform plugin cache 
 
-Set to false if you want to disable terraform plugin cache.
+    ```bash
+    atlantis server --use-tf-plugin-cache=false
+    # or
+    ATLANTIS_USE_TF_PLUGIN_CACHE=false
+    ```
 
-This flag is useful when having multiple projects that need to run a plan and apply in the same PR to avoid the race condition of `plugin_cache_dir` concurrently, this is a terraform known issue, more info:
-
-* [plugin_cache_dir concurrently discussion](https://github.com/hashicorp/terraform/issues/31964)
-* [PR to improve the situation](https://github.com/hashicorp/terraform/pull/33479)
-
-The effect of the race condition is more evident when using parallel configuration to run plan and apply, by disabling the use of plugin cache will impact in the performance when starting a new plan or apply, but in large atlantis deployments with multiple projects and shared modules the use of `--parallel_plan` and `--parallel_apply` is mandatory for an efficient managment of the PRs.
+* uses
+  * multiple projects / need to run a `plan` and `apply` | SAME PR
+    * 👁️ == avoid the race condition of `plugin_cache_dir` concurrently 👁️
+    * terraform known issue
+      * [plugin_cache_dir concurrently discussion](https://github.com/hashicorp/terraform/issues/31964)
+      * [PR to improve the situation](https://github.com/hashicorp/terraform/pull/33479)
+* impacts
+  * side impact in the performance | starting a NEW `plan` or `apply`
+* `--parallel_plan` and `--parallel_apply`
+  * MANDATORY to use | large atlantis deployments / multiple projects and shared modules
 
 ### `--var-file-allowlist`
 

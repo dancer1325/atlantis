@@ -1,9 +1,13 @@
 # Server Configuration
 
-This page explains how to configure the `atlantis server` command.
+* goal
+  * how to configure the `atlantis server` command
 
-Configuration to `atlantis server` can be specified via command line flags,
- environment variables, a config file or a mix of the three.
+* ways to configure `atlantis server`
+  * CL flags
+  * environment variables
+  * config file
+  * mix of PREVIOUS ones
 
 ## Environment Variables
 
@@ -85,15 +89,10 @@ Values are chosen in this order:
   ATLANTIS_ALLOW_FORK_PRS=true
   ```
 
-  Respond to pull requests from forks. Defaults to `false`.
-
-  :::warning SECURITY WARNING
-  Potentially dangerous to enable
-  because if attackers can create a pull request to your repo then they can cause Atlantis
-  to run arbitrary code. This can happen because
-  Atlantis will automatically run `terraform plan`
-  which can run arbitrary code if given a malicious Terraform configuration.
-  :::
+* | forks, respond -- to -- PRs 
+* by default, `false`
+* ❌NOT recommended to enable it ❌
+  * Reason: 🧠 if attackers can create PR | your repo -> Atlantis -- can be used to, via AUTOMATICALLY run `terraform plan`, -- run arbitrary code 🧠
 
 ### `--api-secret`
 

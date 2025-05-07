@@ -1,6 +1,9 @@
 # Deployment
 
-This page covers getting Atlantis up and running in your infrastructure.
+* goal
+  * | your infrastructure, 
+    * deploy Atlantis
+    * run up Atlantis
 
 ::: tip Prerequisites
 

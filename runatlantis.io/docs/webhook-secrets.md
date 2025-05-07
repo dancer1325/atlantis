@@ -1,7 +1,6 @@
 # Webhook Secrets
 
-Atlantis uses Webhook secrets to validate that the webhooks it receives from your
-Git host are legitimate.
+* Atlantis validates -- , via Webhook secrets, the --  webhooks / received from yourGit host
 
 One way to confirm this would be to allowlist requests
 to only come from the IPs of your Git host but an easier way is to use a Webhook

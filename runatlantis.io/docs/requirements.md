@@ -1,21 +1,23 @@
 # Requirements
 
-Atlantis works with most Git hosts and Terraform setups. Read on to confirm
-it works with yours.
+* Atlantis
+  * ALLOWED | MOST
+    * Git hosts
+    * Terraform setups
 
 ## Git Host
 
-Atlantis integrates with the following Git hosts:
-
-* GitHub (public, private or enterprise)
-* GitLab (public, private or enterprise)
-* Gitea (public, private and compatible forks like Forgejo)
-* Bitbucket Cloud aka bitbucket.org (public or private)
-* Bitbucket Server aka Stash
-* Azure DevOps
+* == Git hosts | Atlantis -- can integrate -- with
+  * GitHub (public, private or enterprise)
+  * GitLab (public, private or enterprise)
+  * Gitea (public, private and compatible forks like Forgejo)
+  * Bitbucket Cloud aka bitbucket.org (public or private)
+  * Bitbucket Server aka Stash
+  * Azure DevOps
 
 ## Terraform State
 
+* TODO:
 Atlantis supports all backend types **except for local state**. We don't support local state
 because Atlantis does not have permanent storage and it doesn't commit the new
 statefile back to version control.

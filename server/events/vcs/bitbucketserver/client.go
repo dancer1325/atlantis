@@ -137,7 +137,7 @@ func (b *Client) GetProjectKey(repoName string, cloneURL string) (string, error)
 func (b *Client) CreateComment(logger logging.SimpleLogging, repo models.Repo, pullNum int, comment string, _ string) error {
 	sepEnd := "\n```\n**Warning**: Output length greater than max comment size. Continued in next comment."
 	sepStart := "Continued from previous comment.\n```diff\n"
-	comments := common.SplitComment(comment, maxCommentLength, sepEnd, sepStart)
+	comments := common.SplitComment(comment, maxCommentLength, sepEnd, sepStart, 0, "")
 	for _, c := range comments {
 		if err := b.postComment(repo, pullNum, c); err != nil {
 			return err
@@ -197,13 +197,13 @@ func (b *Client) PullIsApproved(logger logging.SimpleLogging, repo models.Repo, 
 	return approvalStatus, nil
 }
 
-func (b *Client) DiscardReviews(_ models.Repo, _ models.PullRequest) error {
+func (b *Client) DiscardReviews(_ logging.SimpleLogging, _ models.Repo, _ models.PullRequest) error {
 	// TODO implement
 	return nil
 }
 
 // PullIsMergeable returns true if the merge request has no conflicts and can be merged.
-func (b *Client) PullIsMergeable(logger logging.SimpleLogging, repo models.Repo, pull models.PullRequest, _ string) (bool, error) {
+func (b *Client) PullIsMergeable(logger logging.SimpleLogging, repo models.Repo, pull models.PullRequest, _ string, _ []string) (bool, error) {
 	projectKey, err := b.GetProjectKey(repo.Name, repo.SanitizedCloneURL)
 	if err != nil {
 		return false, err
@@ -237,6 +237,8 @@ func (b *Client) UpdateStatus(logger logging.SimpleLogging, _ models.Repo, pull 
 	case models.FailedCommitStatus:
 		bbState = "FAILED"
 	}
+
+	logger.Info("Updating BitBucket commit status for '%s' to '%s'", src, bbState)
 
 	// URL is a required field for bitbucket statuses. We default to the
 	// Atlantis server's URL.
@@ -348,7 +350,7 @@ func (b *Client) makeRequest(method string, path string, reqBody io.Reader) ([]b
 }
 
 // GetTeamNamesForUser returns the names of the teams or groups that the user belongs to (in the organization the repository belongs to).
-func (b *Client) GetTeamNamesForUser(_ models.Repo, _ models.User) ([]string, error) {
+func (b *Client) GetTeamNamesForUser(_ logging.SimpleLogging, _ models.Repo, _ models.User) ([]string, error) {
 	return nil, nil
 }
 

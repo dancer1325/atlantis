@@ -89,6 +89,9 @@ func TestNewGlobalCfg(t *testing.T) {
 		Workflows: map[string]valid.Workflow{
 			"default": expDefaultWorkflow,
 		},
+		TeamAuthz: valid.TeamAuthz{
+			Args: make([]string, 0),
+		},
 	}
 
 	cases := []struct {
@@ -129,7 +132,7 @@ func TestNewGlobalCfg(t *testing.T) {
 
 			if c.allowAllRepoSettings {
 				exp.Repos[0].AllowCustomWorkflows = Bool(true)
-				exp.Repos[0].AllowedOverrides = []string{"plan_requirements", "apply_requirements", "import_requirements", "workflow", "delete_source_branch_on_merge", "repo_locking", "repo_locks", "policy_check"}
+				exp.Repos[0].AllowedOverrides = []string{"plan_requirements", "apply_requirements", "import_requirements", "workflow", "delete_source_branch_on_merge", "repo_locking", "repo_locks", "policy_check", "silence_pr_comments"}
 			}
 			if c.policyCheckEnabled {
 				exp.Repos[0].PlanRequirements = append(exp.Repos[0].PlanRequirements, "policies_passed")
@@ -771,7 +774,7 @@ repos:
 				CustomPolicyCheck:  false,
 			},
 		},
-		"repo-side apply reqs should include non-overrideable 'policies_passed' req when overridden and policies enabled": {
+		"repo-side apply reqs should include non-overridable 'policies_passed' req when overridden and policies enabled": {
 			gCfg: `
 repos:
 - id: /.*/
@@ -803,7 +806,7 @@ repos:
 				PolicyCheck:        true,
 			},
 		},
-		"repo-side apply reqs should not include non-overrideable 'policies_passed' req when overridden and policies disabled": {
+		"repo-side apply reqs should not include non-overridable 'policies_passed' req when overridden and policies disabled": {
 			gCfg: `
 repos:
 - id: /.*/

@@ -26,6 +26,7 @@ import (
 
 	"github.com/gorilla/mux"
 	. "github.com/petergtz/pegomock/v4"
+	"github.com/runatlantis/atlantis/cmd"
 	"github.com/runatlantis/atlantis/server"
 	"github.com/runatlantis/atlantis/server/controllers/web_templates"
 	tMocks "github.com/runatlantis/atlantis/server/controllers/web_templates/mocks"
@@ -36,13 +37,28 @@ import (
 	. "github.com/runatlantis/atlantis/testing"
 )
 
-func TestNewServer(t *testing.T) {
+const (
+	testAtlantisVersion = "1.0.0"
+	testAtlantisUrl     = "http://example.com"
+	testLockingDBType   = cmd.DefaultLockingDBType
+	testGitHubHostName  = cmd.DefaultGHHostname
+	testGitHubUser      = "user"
+)
+
+func TestNewServer_GitHubUser(t *testing.T) {
 	t.Log("Run through NewServer constructor")
 	tmpDir := t.TempDir()
-	_, err := server.NewServer(server.UserConfig{
-		DataDir:     tmpDir,
-		AtlantisURL: "http://example.com",
-	}, server.Config{})
+	_, err := server.NewServer(
+		server.UserConfig{
+			DataDir:        tmpDir,
+			AtlantisURL:    testAtlantisUrl,
+			LockingDBType:  testLockingDBType,
+			GithubHostname: testGitHubHostName,
+			GithubUser:     testGitHubUser,
+		}, server.Config{
+			AtlantisVersion: testAtlantisVersion,
+		},
+	)
 	Ok(t, err)
 }
 
@@ -139,9 +155,12 @@ func TestHealthz(t *testing.T) {
 	req, _ := http.NewRequest("GET", "/healthz", bytes.NewBuffer(nil))
 	w := httptest.NewRecorder()
 	s.Healthz(w, req)
-	Equals(t, http.StatusOK, w.Result().StatusCode)
-	body, _ := io.ReadAll(w.Result().Body)
-	Equals(t, "application/json", w.Result().Header["Content-Type"][0])
+
+	resp := w.Result()
+	defer resp.Body.Close()
+	Equals(t, http.StatusOK, resp.StatusCode)
+	body, _ := io.ReadAll(resp.Body)
+	Equals(t, "application/json", resp.Header["Content-Type"][0])
 	Equals(t,
 		`{
   "status": "ok"
@@ -269,13 +288,4 @@ func TestParseAtlantisURL(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestCommandRunnerVCSClientInitialized(t *testing.T) {
-	s, _ := server.NewServer(server.UserConfig{
-		AtlantisURL: "http://example.com",
-	},
-		server.Config{},
-	)
-	Assert(t, s.CommandRunner.VCSClient != nil, "VCSClient must not be nil.")
 }

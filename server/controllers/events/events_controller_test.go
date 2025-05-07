@@ -25,8 +25,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/google/go-github/v59/github"
-	"github.com/mcdafydd/go-azuredevops/azuredevops"
+	"github.com/drmaxgit/go-azuredevops/azuredevops"
+	"github.com/google/go-github/v71/github"
 	. "github.com/petergtz/pegomock/v4"
 	events_controllers "github.com/runatlantis/atlantis/server/controllers/events"
 	"github.com/runatlantis/atlantis/server/controllers/events/mocks"
@@ -38,7 +38,7 @@ import (
 	"github.com/runatlantis/atlantis/server/logging"
 	"github.com/runatlantis/atlantis/server/metrics"
 	. "github.com/runatlantis/atlantis/testing"
-	gitlab "github.com/xanzy/go-gitlab"
+	gitlab "gitlab.com/gitlab-org/api/client-go"
 )
 
 const githubHeader = "X-Github-Event"
@@ -246,8 +246,10 @@ func TestPost_GitlabCommentNotAllowlisted(t *testing.T) {
 	w := httptest.NewRecorder()
 	e.Post(w, req)
 
-	Equals(t, http.StatusForbidden, w.Result().StatusCode)
-	body, _ := io.ReadAll(w.Result().Body)
+	resp := w.Result()
+	defer resp.Body.Close()
+	Equals(t, http.StatusForbidden, resp.StatusCode)
+	body, _ := io.ReadAll(resp.Body)
 	exp := "Repo not allowlisted"
 	Assert(t, strings.Contains(string(body), exp), "exp %q to be contained in %q", exp, string(body))
 	expRepo, _ := models.NewRepo(models.Gitlab, "gitlabhq/gitlab-test", "https://example.com/gitlabhq/gitlab-test.git", "", "")
@@ -279,8 +281,10 @@ func TestPost_GitlabCommentNotAllowlistedWithSilenceErrors(t *testing.T) {
 	w := httptest.NewRecorder()
 	e.Post(w, req)
 
-	Equals(t, http.StatusForbidden, w.Result().StatusCode)
-	body, _ := io.ReadAll(w.Result().Body)
+	resp := w.Result()
+	defer resp.Body.Close()
+	Equals(t, http.StatusForbidden, resp.StatusCode)
+	body, _ := io.ReadAll(resp.Body)
 	exp := "Repo not allowlisted"
 	Assert(t, strings.Contains(string(body), exp), "exp %q to be contained in %q", exp, string(body))
 	vcsClient.VerifyWasCalled(Never()).CreateComment(Any[logging.SimpleLogging](), Any[models.Repo](), Any[int](), Any[string](), Any[string]())
@@ -311,8 +315,10 @@ func TestPost_GithubCommentNotAllowlisted(t *testing.T) {
 	w := httptest.NewRecorder()
 	e.Post(w, req)
 
-	Equals(t, http.StatusForbidden, w.Result().StatusCode)
-	body, _ := io.ReadAll(w.Result().Body)
+	resp := w.Result()
+	defer resp.Body.Close()
+	Equals(t, http.StatusForbidden, resp.StatusCode)
+	body, _ := io.ReadAll(resp.Body)
 	exp := "Repo not allowlisted"
 	Assert(t, strings.Contains(string(body), exp), "exp %q to be contained in %q", exp, string(body))
 	expRepo, _ := models.NewRepo(models.Github, "baxterthehacker/public-repo", "https://github.com/baxterthehacker/public-repo.git", "", "")
@@ -345,8 +351,10 @@ func TestPost_GithubCommentNotAllowlistedWithSilenceErrors(t *testing.T) {
 	w := httptest.NewRecorder()
 	e.Post(w, req)
 
-	Equals(t, http.StatusForbidden, w.Result().StatusCode)
-	body, _ := io.ReadAll(w.Result().Body)
+	resp := w.Result()
+	defer resp.Body.Close()
+	Equals(t, http.StatusForbidden, resp.StatusCode)
+	body, _ := io.ReadAll(resp.Body)
 	exp := "Repo not allowlisted"
 	Assert(t, strings.Contains(string(body), exp), "exp %q to be contained in %q", exp, string(body))
 	vcsClient.VerifyWasCalled(Never()).CreateComment(Any[logging.SimpleLogging](), Any[models.Repo](), Any[int](), Any[string](), Any[string]())

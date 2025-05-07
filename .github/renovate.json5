@@ -3,6 +3,7 @@
     'config:best-practices',
     ':separateMultipleMajorReleases',
     'schedule:daily',
+    'security:openssf-scorecard',
   ],
   commitMessageSuffix: ' in {{packageFile}}',
   dependencyDashboardAutoclose: true,
@@ -18,7 +19,7 @@
   postUpdateOptions: [
     'gomodTidy',
     'gomodUpdateImportPaths',
-    'pnpmDedupe',
+    'npmDedupe',
   ],
   prHourlyLimit: 1,
   minimumReleaseAge: '5 days',
@@ -31,27 +32,38 @@
   },
   packageRules: [
     {
-      "matchFileNames": ["package.json"],
-      "enabled": false
+      matchBaseBranches: ['main'],
+      matchFileNames: [
+        'package.json',
+        'package-lock.json',
+      ],
     },
     {
       matchFileNames: [
         'testing/**',
       ],
-      matchPackagePatterns: [
-        'conftest',
-      ],
       additionalBranchPrefix: '{{packageFileDir}}-',
       groupName: 'conftest-testing',
+      matchPackageNames: [
+        '/conftest/',
+      ],
     },
     {
       ignorePaths: [
         'testing/**',
       ],
-      matchPackagePatterns: [
-        'github-actions',
-      ],
       groupName: 'github-',
+      matchPackageNames: [
+        '/github-actions/',
+      ],
+    },
+    {
+      ignorePaths: [
+        'server/controllers/events/testdata/**/*.tf',
+      ],
+      matchDatasources: [
+        'terraform',
+      ],
     },
     {
       matchDatasources: [
@@ -69,7 +81,7 @@
         'golang',
       ],
       versioning: 'go',
-      groupName: 'go'
+      groupName: 'go',
     },
   ],
   customManagers: [
@@ -85,7 +97,7 @@
         // ENV DEFAULT_TERRAFORM_VERSION=x.x.x
         // # renovate: datasource=github-releases depName=open-policy-agent/conftest
         // ARG DEFAULT_CONFTEST_VERSION=x.x.x
-        "renovate: datasource=(?<datasource>.*?) depName=(?<depName>.*?)( versioning=(?<versioning>.*?))?\\s(ARG|ENV) .*?_VERSION=(?<currentValue>.*)\\s",
+        'renovate: datasource=(?<datasource>.*?) depName=(?<depName>.*?)( versioning=(?<versioning>.*?))?\\s(ARG|ENV) .*?_VERSION=(?<currentValue>.*)\\s',
       ],
       versioningTemplate: '{{#if versioning}}{{{versioning}}}{{else}}semver{{/if}}',
       extractVersionTemplate: '^v(?<version>\\d+\\.\\d+\\.\\d+)',
@@ -104,8 +116,8 @@
     {
       customType: 'regex',
       fileMatch: [
-        '.circleci/config.yml$',
         '^\\.github/workflows/[^/]+\\.ya?ml$',
+        'Makefile$',
       ],
       matchStrings: [
         'renovate: datasource=(?<datasource>.*?) depName=(?<depName>.*?)( versioning=(?<versioning>.*?))?\\s.*?_VERSION: (?<currentValue>.*)\\s',

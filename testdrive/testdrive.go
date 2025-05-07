@@ -31,7 +31,7 @@ import (
 	"time"
 
 	"github.com/briandowns/spinner"
-	"github.com/google/go-github/v59/github"
+	"github.com/google/go-github/v71/github"
 	"github.com/mitchellh/colorstring"
 	"github.com/pkg/errors"
 )
@@ -120,7 +120,7 @@ Follow these instructions to create a token (we don't store any tokens):
 		return errors.Wrapf(err, "forking repo %s/%s", terraformExampleRepoOwner, terraformExampleRepo)
 	}
 	if !githubClient.CheckForkSuccess(terraformExampleRepoOwner, terraformExampleRepo) {
-		return fmt.Errorf("didn't find forked repo %s/%s. fork unsuccessful", terraformExampleRepoOwner, terraformExampleRepoOwner)
+		return fmt.Errorf("didn't find forked repo %s/%s. fork unsuccessful", terraformExampleRepoOwner, terraformExampleRepo)
 	}
 	s.Stop()
 	colorstring.Println("[green]=> fork completed![reset]")
@@ -286,8 +286,14 @@ tunnels:
 		colorstring.Println("\n[green]Thank you for using atlantis :) \n[reset]For more information about how to use atlantis in production go to: https://www.runatlantis.io")
 		return nil
 	case err := <-ngrokErrors:
-		return errors.Wrap(err, "ngrok tunnel")
+		if err != nil {
+			err = errors.Wrap(err, "ngrok tunnel")
+		}
+		return err
 	case err := <-atlantisErrors:
-		return errors.Wrap(err, "atlantis server")
+		if err != nil {
+			err = errors.Wrap(err, "atlantis server")
+		}
+		return err
 	}
 }

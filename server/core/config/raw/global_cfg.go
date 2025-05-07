@@ -1,13 +1,14 @@
 package raw
 
 import (
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
 
 	validation "github.com/go-ozzo/ozzo-validation"
-	"github.com/pkg/errors"
 	"github.com/runatlantis/atlantis/server/core/config/valid"
+	"github.com/runatlantis/atlantis/server/utils"
 )
 
 // GlobalCfg is the raw schema for server-side repo config.
@@ -16,6 +17,7 @@ type GlobalCfg struct {
 	Workflows  map[string]Workflow `yaml:"workflows" json:"workflows"`
 	PolicySets PolicySets          `yaml:"policies" json:"policies"`
 	Metrics    Metrics             `yaml:"metrics" json:"metrics"`
+	TeamAuthz  TeamAuthz           `yaml:"team_authz" json:"team_authz"`
 }
 
 // Repo is the raw schema for repos in the server-side repo config.
@@ -38,6 +40,7 @@ type Repo struct {
 	PolicyCheck               *bool          `yaml:"policy_check,omitempty" json:"policy_check,omitempty"`
 	CustomPolicyCheck         *bool          `yaml:"custom_policy_check,omitempty" json:"custom_policy_check,omitempty"`
 	AutoDiscover              *AutoDiscover  `yaml:"autodiscover,omitempty" json:"autodiscover,omitempty"`
+	SilencePRComments         []string       `yaml:"silence_pr_comments,omitempty" json:"silence_pr_comments,omitempty"`
 }
 
 func (g GlobalCfg) Validate() error {
@@ -94,6 +97,24 @@ func (g GlobalCfg) Validate() error {
 			}
 		}
 	}
+
+	// Validate supported SilencePRComments values.
+	for _, repo := range g.Repos {
+		if repo.SilencePRComments == nil {
+			continue
+		}
+		for _, silenceStage := range repo.SilencePRComments {
+			if !utils.SlicesContains(valid.AllowedSilencePRComments, silenceStage) {
+				return fmt.Errorf(
+					"server-side repo config '%s' key value of '%s' is not supported, supported values are [%s]",
+					valid.SilencePRCommentsKey,
+					silenceStage,
+					strings.Join(valid.AllowedSilencePRComments, ", "),
+				)
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -105,8 +126,8 @@ func (g GlobalCfg) ToValid(defaultCfg valid.GlobalCfg) valid.GlobalCfg {
 	applyReqs := defaultCfg.Repos[0].ApplyRequirements
 	var globalApplyReqs []string
 	for _, req := range applyReqs {
-		for _, nonOverrideableReq := range valid.NonOverrideableApplyReqs {
-			if req == nonOverrideableReq {
+		for _, nonOverridableReq := range valid.NonOverridableApplyReqs {
+			if req == nonOverridableReq {
 				globalApplyReqs = append(globalApplyReqs, req)
 			}
 		}
@@ -141,6 +162,7 @@ func (g GlobalCfg) ToValid(defaultCfg valid.GlobalCfg) valid.GlobalCfg {
 		Workflows:  workflows,
 		PolicySets: g.PolicySets.ToValid(),
 		Metrics:    g.Metrics.ToValid(),
+		TeamAuthz:  g.TeamAuthz.ToValid(),
 	}
 }
 
@@ -162,7 +184,10 @@ func (r Repo) Validate() error {
 			return nil
 		}
 		_, err := regexp.Compile(id[1 : len(id)-1])
-		return errors.Wrapf(err, "parsing: %s", id)
+		if err != nil {
+			return fmt.Errorf("parsing: %s: %w", id, err)
+		}
+		return nil
 	}
 
 	branchValid := func(value interface{}) error {
@@ -175,7 +200,10 @@ func (r Repo) Validate() error {
 		}
 		withoutSlashes := branch[1 : len(branch)-1]
 		_, err := regexp.Compile(withoutSlashes)
-		return errors.Wrapf(err, "parsing: %s", branch)
+		if err != nil {
+			return fmt.Errorf("parsing: %s: %w", branch, err)
+		}
+		return nil
 	}
 
 	repoConfigFileValid := func(value interface{}) error {
@@ -195,8 +223,8 @@ func (r Repo) Validate() error {
 	overridesValid := func(value interface{}) error {
 		overrides := value.([]string)
 		for _, o := range overrides {
-			if o != valid.PlanRequirementsKey && o != valid.ApplyRequirementsKey && o != valid.ImportRequirementsKey && o != valid.WorkflowKey && o != valid.DeleteSourceBranchOnMergeKey && o != valid.RepoLockingKey && o != valid.RepoLocksKey && o != valid.PolicyCheckKey && o != valid.CustomPolicyCheckKey {
-				return fmt.Errorf("%q is not a valid override, only %q, %q, %q, %q, %q, %q, %q, %q, and %q are supported", o, valid.PlanRequirementsKey, valid.ApplyRequirementsKey, valid.ImportRequirementsKey, valid.WorkflowKey, valid.DeleteSourceBranchOnMergeKey, valid.RepoLockingKey, valid.RepoLocksKey, valid.PolicyCheckKey, valid.CustomPolicyCheckKey)
+			if o != valid.PlanRequirementsKey && o != valid.ApplyRequirementsKey && o != valid.ImportRequirementsKey && o != valid.WorkflowKey && o != valid.DeleteSourceBranchOnMergeKey && o != valid.RepoLockingKey && o != valid.RepoLocksKey && o != valid.PolicyCheckKey && o != valid.CustomPolicyCheckKey && o != valid.SilencePRCommentsKey {
+				return fmt.Errorf("%q is not a valid override, only %q, %q, %q, %q, %q, %q, %q, %q, %q, and %q are supported", o, valid.PlanRequirementsKey, valid.ApplyRequirementsKey, valid.ImportRequirementsKey, valid.WorkflowKey, valid.DeleteSourceBranchOnMergeKey, valid.RepoLockingKey, valid.RepoLocksKey, valid.PolicyCheckKey, valid.CustomPolicyCheckKey, valid.SilencePRCommentsKey)
 			}
 		}
 		return nil
@@ -365,5 +393,6 @@ OuterGlobalImportReqs:
 		PolicyCheck:               r.PolicyCheck,
 		CustomPolicyCheck:         r.CustomPolicyCheck,
 		AutoDiscover:              autoDiscover,
+		SilencePRComments:         r.SilencePRComments,
 	}
 }

@@ -76,6 +76,7 @@ type PlanCommandRunner struct {
 	// a plan.
 	DiscardApprovalOnPlan bool
 	pullReqStatusFetcher  vcs.PullReqStatusFetcher
+	SilencePRComments     []string
 }
 
 func (p *PlanCommandRunner) runAutoplan(ctx *command.Context) {
@@ -111,11 +112,6 @@ func (p *PlanCommandRunner) runAutoplan(ctx *command.Context) {
 			}
 		}
 		return
-	}
-
-	// At this point we are sure Atlantis has work to do, so set commit status to pending
-	if err := p.commitStatusUpdater.UpdateCombined(ctx.Log, ctx.Pull.BaseRepo, ctx.Pull, models.PendingCommitStatus, command.Plan); err != nil {
-		ctx.Log.Warn("unable to update plan commit status: %s", err)
 	}
 
 	// discard previous plans that might not be relevant anymore
@@ -182,13 +178,9 @@ func (p *PlanCommandRunner) run(ctx *command.Context, cmd *CommentCommand) {
 	}
 
 	if p.DiscardApprovalOnPlan {
-		if err = p.pullUpdater.VCSClient.DiscardReviews(baseRepo, pull); err != nil {
+		if err = p.pullUpdater.VCSClient.DiscardReviews(ctx.Log, baseRepo, pull); err != nil {
 			ctx.Log.Err("failed to remove approvals: %s", err)
 		}
-	}
-
-	if err = p.commitStatusUpdater.UpdateCombined(ctx.Log, baseRepo, pull, models.PendingCommitStatus, command.Plan); err != nil {
-		ctx.Log.Warn("unable to update commit status: %s", err)
 	}
 
 	projectCmds, err := p.prjCmdBuilder.BuildPlanCommands(ctx, cmd)
@@ -261,6 +253,7 @@ func (p *PlanCommandRunner) run(ctx *command.Context, cmd *CommentCommand) {
 	} else {
 		result = runProjectCmds(projectCmds, p.prjCmdRunner.Plan)
 	}
+	ctx.CommandHasErrors = result.HasErrors()
 
 	if p.autoMerger.automergeEnabled(projectCmds) && result.HasErrors() {
 		ctx.Log.Info("deleting plans because there were errors and automerge requires all plans succeed")
@@ -286,7 +279,7 @@ func (p *PlanCommandRunner) run(ctx *command.Context, cmd *CommentCommand) {
 	// This step does not approve any policies that require approval.
 	if len(result.ProjectResults) > 0 &&
 		!(result.HasErrors() || result.PlansDeleted) {
-		ctx.Log.Info("Running policy check for %s", cmd.String())
+		ctx.Log.Info("Running policy check for '%s'", cmd.CommandName())
 		p.policyCheckCommandRunner.Run(ctx, policyCheckCmds)
 	} else if len(projectCmds) == 0 && !cmd.IsForSpecificProject() {
 		// If there were no projects modified, we set successful commit statuses

@@ -26,22 +26,22 @@ func (g JobIDKeyGenerator) Generate(r *http.Request) (string, error) {
 }
 
 type JobsController struct {
-	AtlantisVersion          string
-	AtlantisURL              *url.URL
-	Logger                   logging.SimpleLogging
-	ProjectJobsTemplate      web_templates.TemplateWriter
-	ProjectJobsErrorTemplate web_templates.TemplateWriter
-	Backend                  locking.Backend
-	WsMux                    *websocket.Multiplexor
+	AtlantisVersion          string                       `validate:"required"`
+	AtlantisURL              *url.URL                     `validate:"required"`
+	Logger                   logging.SimpleLogging        `validate:"required"`
+	ProjectJobsTemplate      web_templates.TemplateWriter `validate:"required"`
+	ProjectJobsErrorTemplate web_templates.TemplateWriter `validate:"required"`
+	Backend                  locking.Backend              `validate:"required"`
+	WsMux                    *websocket.Multiplexor       `validate:"required"`
 	KeyGenerator             JobIDKeyGenerator
-	StatsScope               tally.Scope
+	StatsScope               tally.Scope `validate:"required"`
 }
 
 func (j *JobsController) getProjectJobs(w http.ResponseWriter, r *http.Request) error {
 	jobID, err := j.KeyGenerator.Generate(r)
 
 	if err != nil {
-		j.respond(w, logging.Error, http.StatusBadRequest, err.Error())
+		j.respond(w, logging.Error, http.StatusBadRequest, "%s", err.Error())
 		return err
 	}
 
@@ -67,7 +67,7 @@ func (j *JobsController) getProjectJobsWS(w http.ResponseWriter, r *http.Request
 	err := j.WsMux.Handle(w, r)
 
 	if err != nil {
-		j.respond(w, logging.Error, http.StatusInternalServerError, err.Error())
+		j.respond(w, logging.Error, http.StatusInternalServerError, "%s", err.Error())
 		return err
 	}
 

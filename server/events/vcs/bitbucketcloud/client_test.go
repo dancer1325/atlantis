@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/runatlantis/atlantis/server/events/models"
@@ -13,6 +14,8 @@ import (
 	"github.com/runatlantis/atlantis/server/logging"
 	. "github.com/runatlantis/atlantis/testing"
 )
+
+const diffstatURL = "/2.0/repositories/owner/repo/pullrequests/1/diffstat"
 
 // Should follow pagination properly.
 func TestClient_GetModifiedFilesPagination(t *testing.T) {
@@ -56,12 +59,12 @@ func TestClient_GetModifiedFilesPagination(t *testing.T) {
 	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.RequestURI {
 		// The first request should hit this URL.
-		case "/2.0/repositories/owner/repo/pullrequests/1/diffstat":
-			resp := firstResp + fmt.Sprintf(`,"next": "%s/2.0/repositories/owner/repo/pullrequests/1/diffstat?page=2"}`, serverURL)
+		case diffstatURL:
+			resp := firstResp + fmt.Sprintf(`,"next": "%s%s?page=2"}`, serverURL, diffstatURL)
 			w.Write([]byte(resp)) // nolint: errcheck
 			return
 			// The second should hit this URL.
-		case "/2.0/repositories/owner/repo/pullrequests/1/diffstat?page=2":
+		case fmt.Sprintf("%s?page=2", diffstatURL):
 			w.Write([]byte(secondResp + "}")) // nolint: errcheck
 		default:
 			t.Errorf("got unexpected request at %q", r.RequestURI)
@@ -125,7 +128,7 @@ func TestClient_GetModifiedFilesOldNil(t *testing.T) {
 	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.RequestURI {
 		// The first request should hit this URL.
-		case "/2.0/repositories/owner/repo/pullrequests/1/diffstat":
+		case diffstatURL:
 			w.Write([]byte(resp)) // nolint: errcheck
 			return
 		default:
@@ -322,7 +325,7 @@ func TestClient_PullIsMergeable(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				switch r.RequestURI {
-				case "/2.0/repositories/owner/repo/pullrequests/1/diffstat":
+				case diffstatURL:
 					w.Write([]byte(c.DiffStat)) // nolint: errcheck
 					return
 				default:
@@ -350,7 +353,7 @@ func TestClient_PullIsMergeable(t *testing.T) {
 					},
 				}, models.PullRequest{
 					Num: 1,
-				}, "atlantis-test")
+				}, "atlantis-test", []string{})
 			Ok(t, err)
 			Equals(t, c.ExpMergeable, actMergeable)
 		})
@@ -364,4 +367,160 @@ func TestClient_MarkdownPullLink(t *testing.T) {
 	s, _ := client.MarkdownPullLink(pull)
 	exp := "#1"
 	Equals(t, exp, s)
+}
+
+func TestClient_GetMyUUID(t *testing.T) {
+	json, err := os.ReadFile(filepath.Join("testdata", "user.json"))
+	Ok(t, err)
+
+	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.RequestURI {
+		case "/2.0/user":
+			w.Write(json) // nolint: errcheck
+			return
+		default:
+			t.Errorf("got unexpected request at %q", r.RequestURI)
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+	}))
+	defer testServer.Close()
+
+	client := bitbucketcloud.NewClient(http.DefaultClient, "user", "pass", "runatlantis.io")
+	client.BaseURL = testServer.URL
+	v, _ := client.GetMyUUID()
+	Equals(t, v, "{00000000-0000-0000-0000-000000000001}")
+}
+
+func TestClient_GetComment(t *testing.T) {
+	json, err := os.ReadFile(filepath.Join("testdata", "comments.json"))
+	Ok(t, err)
+
+	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.RequestURI {
+		case "/2.0/repositories/myorg/myrepo/pullrequests/5/comments":
+			w.Write(json) // nolint: errcheck
+			return
+		default:
+			t.Errorf("got unexpected request at %q", r.RequestURI)
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+	}))
+	defer testServer.Close()
+
+	client := bitbucketcloud.NewClient(http.DefaultClient, "user", "pass", "runatlantis.io")
+	client.BaseURL = testServer.URL
+	v, _ := client.GetPullRequestComments(
+		models.Repo{
+			FullName:          "myorg/myrepo",
+			Owner:             "owner",
+			Name:              "myrepo",
+			CloneURL:          "",
+			SanitizedCloneURL: "",
+			VCSHost: models.VCSHost{
+				Type:     models.BitbucketCloud,
+				Hostname: "bitbucket.org",
+			},
+		}, 5)
+
+	Equals(t, len(v), 5)
+	exp := "Plan"
+	Assert(t, strings.Contains(v[1].Content.Raw, exp), "Comment should contain word \"%s\", has \"%s\"", exp, v[1].Content.Raw)
+}
+
+func TestClient_DeleteComment(t *testing.T) {
+	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.RequestURI {
+		case "/2.0/repositories/myorg/myrepo/pullrequests/5/comments/1":
+			if r.Method == "DELETE" {
+				w.WriteHeader(http.StatusNoContent)
+			}
+			return
+		default:
+			t.Errorf("got unexpected request at %q", r.RequestURI)
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+	}))
+	defer testServer.Close()
+
+	client := bitbucketcloud.NewClient(http.DefaultClient, "user", "pass", "runatlantis.io")
+	client.BaseURL = testServer.URL
+	err := client.DeletePullRequestComment(
+		models.Repo{
+			FullName:          "myorg/myrepo",
+			Owner:             "owner",
+			Name:              "myrepo",
+			CloneURL:          "",
+			SanitizedCloneURL: "",
+			VCSHost: models.VCSHost{
+				Type:     models.BitbucketCloud,
+				Hostname: "bitbucket.org",
+			},
+		}, 5, 1)
+	Ok(t, err)
+}
+
+func TestClient_HidePRComments(t *testing.T) {
+	logger := logging.NewNoopLogger(t)
+	comments, err := os.ReadFile(filepath.Join("testdata", "comments.json"))
+	Ok(t, err)
+	json, err := os.ReadFile(filepath.Join("testdata", "user.json"))
+	Ok(t, err)
+
+	called := 0
+
+	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.RequestURI {
+		// we have two comments in the test file
+		// The code is going to delete them all and then create a new one
+		case "/2.0/repositories/myorg/myrepo/pullrequests/5/comments/498931882":
+			if r.Method == "DELETE" {
+				w.WriteHeader(http.StatusNoContent)
+			}
+			w.Write([]byte("")) // nolint: errcheck
+			called += 1
+			return
+			// This is the second one
+		case "/2.0/repositories/myorg/myrepo/pullrequests/5/comments/498931784":
+			if r.Method == "DELETE" {
+				http.Error(w, "", http.StatusNoContent)
+			}
+			w.Write([]byte("")) // nolint: errcheck
+			called += 1
+			return
+		case "/2.0/repositories/myorg/myrepo/pullrequests/5/comments/49893111":
+			Assert(t, r.Method != "DELETE", "Shouldn't delete this one")
+			return
+		case "/2.0/repositories/myorg/myrepo/pullrequests/5/comments":
+			w.Write(comments) // nolint: errcheck
+			return
+		case "/2.0/user":
+			w.Write(json) // nolint: errcheck
+			return
+		default:
+			t.Errorf("got unexpected request at %q", r.RequestURI)
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+	}))
+	defer testServer.Close()
+
+	client := bitbucketcloud.NewClient(http.DefaultClient, "user", "pass", "runatlantis.io")
+	client.BaseURL = testServer.URL
+	err = client.HidePrevCommandComments(logger,
+		models.Repo{
+			FullName:          "myorg/myrepo",
+			Owner:             "owner",
+			Name:              "myrepo",
+			CloneURL:          "",
+			SanitizedCloneURL: "",
+			VCSHost: models.VCSHost{
+				Type:     models.BitbucketCloud,
+				Hostname: "bitbucket.org",
+			},
+		}, 5, "plan", "")
+	Ok(t, err)
+	Equals(t, 2, called)
 }

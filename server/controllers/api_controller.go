@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/go-playground/validator/v10"
 	"github.com/runatlantis/atlantis/server/core/locking"
@@ -21,18 +22,21 @@ const atlantisTokenHeader = "X-Atlantis-Token"
 
 type APIController struct {
 	APISecret                      []byte
-	Locker                         locking.Locker
-	Logger                         logging.SimpleLogging
-	Parser                         events.EventParsing
-	ProjectCommandBuilder          events.ProjectCommandBuilder
-	ProjectPlanCommandRunner       events.ProjectPlanCommandRunner
-	ProjectApplyCommandRunner      events.ProjectApplyCommandRunner
+	Locker                         locking.Locker                   `validate:"required"`
+	Logger                         logging.SimpleLogging            `validate:"required"`
+	Parser                         events.EventParsing              `validate:"required"`
+	ProjectCommandBuilder          events.ProjectCommandBuilder     `validate:"required"`
+	ProjectPlanCommandRunner       events.ProjectPlanCommandRunner  `validate:"required"`
+	ProjectApplyCommandRunner      events.ProjectApplyCommandRunner `validate:"required"`
 	FailOnPreWorkflowHookError     bool
-	PreWorkflowHooksCommandRunner  events.PreWorkflowHooksCommandRunner
-	PostWorkflowHooksCommandRunner events.PostWorkflowHooksCommandRunner
-	RepoAllowlistChecker           *events.RepoAllowlistChecker
-	Scope                          tally.Scope
-	VCSClient                      vcs.Client
+	PreWorkflowHooksCommandRunner  events.PreWorkflowHooksCommandRunner  `validate:"required"`
+	PostWorkflowHooksCommandRunner events.PostWorkflowHooksCommandRunner `validate:"required"`
+	RepoAllowlistChecker           *events.RepoAllowlistChecker          `validate:"required"`
+	Scope                          tally.Scope                           `validate:"required"`
+	VCSClient                      vcs.Client                            `validate:"required"`
+	WorkingDir                     events.WorkingDir                     `validate:"required"`
+	WorkingDirLocker               events.WorkingDirLocker               `validate:"required"`
+	CommitStatusUpdater            events.CommitStatusUpdater            `validate:"required"`
 }
 
 type APIRequest struct {
@@ -78,7 +82,7 @@ func (a *APIController) apiReportError(w http.ResponseWriter, code int, err erro
 	response, _ := json.Marshal(map[string]string{
 		"error": err.Error(),
 	})
-	a.respond(w, logging.Warn, code, string(response))
+	a.respond(w, logging.Warn, code, "%s", string(response))
 }
 
 func (a *APIController) Plan(w http.ResponseWriter, r *http.Request) {
@@ -90,12 +94,18 @@ func (a *APIController) Plan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	err = a.apiSetup(ctx)
+	if err != nil {
+		a.apiReportError(w, http.StatusInternalServerError, err)
+		return
+	}
+
 	result, err := a.apiPlan(request, ctx)
 	if err != nil {
 		a.apiReportError(w, http.StatusInternalServerError, err)
 		return
 	}
-	defer a.Locker.UnlockByPull(ctx.HeadRepo.FullName, 0) // nolint: errcheck
+	defer a.Locker.UnlockByPull(ctx.HeadRepo.FullName, ctx.Pull.Num) // nolint: errcheck
 	if result.HasErrors() {
 		code = http.StatusInternalServerError
 	}
@@ -106,7 +116,7 @@ func (a *APIController) Plan(w http.ResponseWriter, r *http.Request) {
 		a.apiReportError(w, http.StatusInternalServerError, err)
 		return
 	}
-	a.respond(w, logging.Debug, code, string(response))
+	a.respond(w, logging.Warn, code, "%s", string(response))
 }
 
 func (a *APIController) Apply(w http.ResponseWriter, r *http.Request) {
@@ -118,13 +128,19 @@ func (a *APIController) Apply(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	err = a.apiSetup(ctx)
+	if err != nil {
+		a.apiReportError(w, http.StatusInternalServerError, err)
+		return
+	}
+
 	// We must first make the plan for all projects
 	_, err = a.apiPlan(request, ctx)
 	if err != nil {
 		a.apiReportError(w, http.StatusInternalServerError, err)
 		return
 	}
-	defer a.Locker.UnlockByPull(ctx.HeadRepo.FullName, 0) // nolint: errcheck
+	defer a.Locker.UnlockByPull(ctx.HeadRepo.FullName, ctx.Pull.Num) // nolint: errcheck
 
 	// We can now prepare and run the apply step
 	result, err := a.apiApply(request, ctx)
@@ -141,7 +157,77 @@ func (a *APIController) Apply(w http.ResponseWriter, r *http.Request) {
 		a.apiReportError(w, http.StatusInternalServerError, err)
 		return
 	}
-	a.respond(w, logging.Debug, code, string(response))
+	a.respond(w, logging.Warn, code, "%s", string(response))
+}
+
+type LockDetail struct {
+	Name            string
+	ProjectName     string
+	ProjectRepo     string
+	ProjectRepoPath string
+	PullID          int `json:",string"`
+	PullURL         string
+	User            string
+	Workspace       string
+	Time            time.Time
+}
+
+type ListLocksResult struct {
+	Locks []LockDetail
+}
+
+func (a *APIController) ListLocks(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	locks, err := a.Locker.List()
+	if err != nil {
+		a.apiReportError(w, http.StatusInternalServerError, err)
+		return
+	}
+
+	result := ListLocksResult{}
+	for name, lock := range locks {
+		lockDetail := LockDetail{
+			name,
+			lock.Project.ProjectName,
+			lock.Project.RepoFullName,
+			lock.Project.Path,
+			lock.Pull.Num,
+			lock.Pull.URL,
+			lock.User.Username,
+			lock.Workspace,
+			lock.Time,
+		}
+		result.Locks = append(result.Locks, lockDetail)
+	}
+
+	response, err := json.Marshal(result)
+	if err != nil {
+		a.apiReportError(w, http.StatusInternalServerError, err)
+		return
+	}
+	a.respond(w, logging.Warn, http.StatusOK, "%s", string(response))
+}
+
+func (a *APIController) apiSetup(ctx *command.Context) error {
+	pull := ctx.Pull
+	baseRepo := ctx.Pull.BaseRepo
+	headRepo := ctx.HeadRepo
+
+	unlockFn, err := a.WorkingDirLocker.TryLock(baseRepo.FullName, pull.Num, events.DefaultWorkspace, events.DefaultRepoRelDir)
+	if err != nil {
+		return err
+	}
+	ctx.Log.Debug("got workspace lock")
+	defer unlockFn()
+
+	// ensure workingDir is present
+	_, err = a.WorkingDir.Clone(ctx.Log, headRepo, pull, events.DefaultWorkspace)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (a *APIController) apiPlan(request *APIRequest, ctx *command.Context) (*command.Result, error) {
@@ -150,11 +236,15 @@ func (a *APIController) apiPlan(request *APIRequest, ctx *command.Context) (*com
 		return nil, err
 	}
 
+	// Update the combined plan commit status to pending
+	if err := a.CommitStatusUpdater.UpdateCombined(ctx.Log, ctx.Pull.BaseRepo, ctx.Pull, models.PendingCommitStatus, command.Plan); err != nil {
+		ctx.Log.Warn("unable to update plan commit status: %s", err)
+	}
+
 	var projectResults []command.ProjectResult
 	for i, cmd := range cmds {
 		err = a.PreWorkflowHooksCommandRunner.RunPreHooks(ctx, cc[i])
 		if err != nil {
-			ctx.Log.Err("Error running pre-workflow hooks %s.", err)
 			if a.FailOnPreWorkflowHookError {
 				return nil, err
 			}
@@ -163,10 +253,7 @@ func (a *APIController) apiPlan(request *APIRequest, ctx *command.Context) (*com
 		res := a.ProjectPlanCommandRunner.Plan(cmd)
 		projectResults = append(projectResults, res)
 
-		err = a.PostWorkflowHooksCommandRunner.RunPostHooks(ctx, cc[i])
-		if err != nil {
-			ctx.Log.Err("Error running post-workflow hooks %s.", err)
-		}
+		a.PostWorkflowHooksCommandRunner.RunPostHooks(ctx, cc[i]) // nolint: errcheck
 	}
 	return &command.Result{ProjectResults: projectResults}, nil
 }
@@ -177,11 +264,15 @@ func (a *APIController) apiApply(request *APIRequest, ctx *command.Context) (*co
 		return nil, err
 	}
 
+	// Update the combined apply commit status to pending
+	if err := a.CommitStatusUpdater.UpdateCombined(ctx.Log, ctx.Pull.BaseRepo, ctx.Pull, models.PendingCommitStatus, command.Apply); err != nil {
+		ctx.Log.Warn("unable to update apply commit status: %s", err)
+	}
+
 	var projectResults []command.ProjectResult
 	for i, cmd := range cmds {
 		err = a.PreWorkflowHooksCommandRunner.RunPreHooks(ctx, cc[i])
 		if err != nil {
-			ctx.Log.Err("Error running pre-workflow hooks %s.", err)
 			if a.FailOnPreWorkflowHookError {
 				return nil, err
 			}
@@ -190,10 +281,7 @@ func (a *APIController) apiApply(request *APIRequest, ctx *command.Context) (*co
 		res := a.ProjectApplyCommandRunner.Apply(cmd)
 		projectResults = append(projectResults, res)
 
-		err = a.PostWorkflowHooksCommandRunner.RunPostHooks(ctx, cc[i])
-		if err != nil {
-			ctx.Log.Err("Error running post-workflow hooks %s.", err)
-		}
+		a.PostWorkflowHooksCommandRunner.RunPostHooks(ctx, cc[i]) // nolint: errcheck
 	}
 	return &command.Result{ProjectResults: projectResults}, nil
 }

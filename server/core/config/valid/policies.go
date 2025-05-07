@@ -1,6 +1,7 @@
 package valid
 
 import (
+	"slices"
 	"strings"
 
 	version "github.com/hashicorp/go-version"
@@ -27,11 +28,12 @@ type PolicyOwners struct {
 }
 
 type PolicySet struct {
-	Source       string
-	Path         string
-	Name         string
-	ApproveCount int
-	Owners       PolicyOwners
+	Source             string
+	Path               string
+	Name               string
+	ApproveCount       int
+	Owners             PolicyOwners
+	PreventSelfApprove bool
 }
 
 func (p *PolicySets) HasPolicies() bool {
@@ -65,4 +67,17 @@ func (o *PolicyOwners) IsOwner(username string, userTeams []string) bool {
 	}
 
 	return false
+}
+
+// Return all owner teams from all policy sets
+func (p *PolicySets) AllTeams() []string {
+	teams := p.Owners.Teams
+	for _, policySet := range p.PolicySets {
+		for _, team := range policySet.Owners.Teams {
+			if !slices.Contains(teams, team) {
+				teams = append(teams, team)
+			}
+		}
+	}
+	return teams
 }

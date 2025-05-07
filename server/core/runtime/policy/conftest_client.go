@@ -1,6 +1,8 @@
 package policy
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,13 +12,13 @@ import (
 	"encoding/json"
 	"regexp"
 
-	"github.com/hashicorp/go-multierror"
+	"github.com/hashicorp/go-getter/v2"
+
 	version "github.com/hashicorp/go-version"
-	"github.com/pkg/errors"
+
 	"github.com/runatlantis/atlantis/server/core/config/valid"
 	"github.com/runatlantis/atlantis/server/core/runtime/cache"
 	runtime_models "github.com/runatlantis/atlantis/server/core/runtime/models"
-	"github.com/runatlantis/atlantis/server/core/terraform"
 	"github.com/runatlantis/atlantis/server/events/command"
 	"github.com/runatlantis/atlantis/server/events/models"
 	"github.com/runatlantis/atlantis/server/logging"
@@ -103,8 +105,21 @@ func (p *SourceResolverProxy) Resolve(policySet valid.PolicySet) (string, error)
 	}
 }
 
+//go:generate pegomock generate --package mocks -o mocks/mock_downloader.go Downloader
+
+type Downloader interface {
+	GetAny(dst, src string) error
+}
+
+type ConfTestGoGetterVersionDownloader struct{}
+
+func (c ConfTestGoGetterVersionDownloader) GetAny(dst, src string) error {
+	_, err := getter.GetAny(context.Background(), dst, src)
+	return err
+}
+
 type ConfTestVersionDownloader struct {
-	downloader terraform.Downloader
+	downloader Downloader
 }
 
 func (c ConfTestVersionDownloader) downloadConfTestVersion(v *version.Version, destPath string) (runtime_models.FilePath, error) {
@@ -125,7 +140,7 @@ func (c ConfTestVersionDownloader) downloadConfTestVersion(v *version.Version, d
 	fullSrcURL := fmt.Sprintf("%s?checksum=file:%s", binURL, checksumURL)
 
 	if err := c.downloader.GetAny(destPath, fullSrcURL); err != nil {
-		return runtime_models.LocalFilePath(""), errors.Wrapf(err, "downloading conftest version %s at %q", v.String(), fullSrcURL)
+		return runtime_models.LocalFilePath(""), fmt.Errorf("downloading conftest version %s at %q: %w", v.String(), fullSrcURL, err)
 	}
 
 	binPath := filepath.Join(destPath, "conftest")
@@ -142,7 +157,7 @@ type ConfTestExecutorWorkflow struct {
 	Exec                   runtime_models.Exec
 }
 
-func NewConfTestExecutorWorkflow(log logging.SimpleLogging, versionRootDir string, conftestDownloder terraform.Downloader) *ConfTestExecutorWorkflow {
+func NewConfTestExecutorWorkflow(log logging.SimpleLogging, versionRootDir string, conftestDownloder Downloader) *ConfTestExecutorWorkflow {
 	downloader := ConfTestVersionDownloader{
 		downloader: conftestDownloder,
 	}
@@ -198,9 +213,9 @@ func (c *ConfTestExecutorWorkflow) Run(ctx command.ProjectContext, executablePat
 		if cmdErr != nil {
 			// Since we're running conftest for each policyset, individual command errors should be concatenated.
 			if isValidConftestOutput(cmdOutput) {
-				combinedErr = multierror.Append(combinedErr, fmt.Errorf("policy_set: %s: conftest: some policies failed", policySet.Name))
+				combinedErr = errors.Join(combinedErr, fmt.Errorf("policy_set: %s: conftest: some policies failed", policySet.Name))
 			} else {
-				combinedErr = multierror.Append(combinedErr, fmt.Errorf("policy_set: %s: conftest: %s", policySet.Name, cmdOutput))
+				combinedErr = errors.Join(combinedErr, fmt.Errorf("policy_set: %s: conftest: %s", policySet.Name, cmdOutput))
 			}
 		}
 
@@ -233,13 +248,7 @@ func (c *ConfTestExecutorWorkflow) Run(ctx command.ProjectContext, executablePat
 	policyCheckResultFile := filepath.Join(workdir, ctx.GetPolicyCheckResultFileName())
 	err = os.WriteFile(policyCheckResultFile, marshaledStatus, 0600)
 
-	combinedErr = multierror.Append(combinedErr, err)
-
-	// Multierror will wrap combined errors in a way that the upstream functions won't be able to read it as nil.
-	// Let's pass nil back if there are no wrapped errors.
-	if errors.Unwrap(combinedErr) == nil {
-		combinedErr = nil
-	}
+	combinedErr = errors.Join(combinedErr, err)
 
 	output := string(marshaledStatus)
 
@@ -292,7 +301,7 @@ func getDefaultVersion() (*version.Version, error) {
 	wrappedVersion, err := version.NewVersion(defaultVersion)
 
 	if err != nil {
-		return nil, errors.Wrapf(err, "wrapping version %s", defaultVersion)
+		return nil, fmt.Errorf("wrapping version %s: %w", defaultVersion, err)
 	}
 	return wrappedVersion, nil
 }

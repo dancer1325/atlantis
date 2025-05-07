@@ -9,7 +9,7 @@ import (
 
 	"github.com/hashicorp/go-version"
 	. "github.com/petergtz/pegomock/v4"
-	terraform_mocks "github.com/runatlantis/atlantis/server/core/terraform/mocks"
+	tfclientmocks "github.com/runatlantis/atlantis/server/core/terraform/tfclient/mocks"
 
 	"github.com/runatlantis/atlantis/server/core/config"
 	"github.com/runatlantis/atlantis/server/core/config/valid"
@@ -45,7 +45,7 @@ var defaultUserConfig = struct {
 	AutoplanFileList:         "**/*.tf,**/*.tfvars,**/*.tfvars.json,**/terragrunt.hcl,**/.terraform.lock.hcl",
 	RestrictFileList:         false,
 	SilenceNoProjects:        false,
-	IncludeGitUntrackedFiles: true,
+	IncludeGitUntrackedFiles: false,
 	AutoDiscoverMode:         "auto",
 }
 
@@ -233,8 +233,7 @@ terraform {
 	scope, _, _ := metrics.NewLoggingScope(logger, "atlantis")
 	userConfig := defaultUserConfig
 
-	terraformClient := terraform_mocks.NewMockClient()
-	When(terraformClient.ListAvailableVersions(Any[logging.SimpleLogging]())).ThenReturn([]string{}, nil)
+	terraformClient := tfclientmocks.NewMockClient()
 
 	for _, c := range cases {
 		t.Run(c.Description, func(t *testing.T) {
@@ -242,7 +241,7 @@ terraform {
 			tmpDir := DirStructure(t, c.TestDirStructure)
 			workingDir := mocks.NewMockWorkingDir()
 			When(workingDir.Clone(Any[logging.SimpleLogging](), Any[models.Repo](), Any[models.PullRequest](),
-				Any[string]())).ThenReturn(tmpDir, false, nil)
+				Any[string]())).ThenReturn(tmpDir, nil)
 			vcsClient := vcsmocks.NewMockClient()
 			When(vcsClient.GetModifiedFiles(Any[logging.SimpleLogging](), Any[models.Repo](),
 				Any[models.PullRequest]())).ThenReturn(ChangedFiles(c.TestDirStructure, ""), nil)
@@ -603,7 +602,7 @@ projects:
 
 				workingDir := mocks.NewMockWorkingDir()
 				When(workingDir.Clone(Any[logging.SimpleLogging](), Any[models.Repo](), Any[models.PullRequest](),
-					Any[string]())).ThenReturn(tmpDir, false, nil)
+					Any[string]())).ThenReturn(tmpDir, nil)
 				When(workingDir.GetWorkingDir(Any[models.Repo](), Any[models.PullRequest](), Any[string]())).ThenReturn(tmpDir, nil)
 				vcsClient := vcsmocks.NewMockClient()
 				When(vcsClient.GetModifiedFiles(Any[logging.SimpleLogging](), Any[models.Repo](),
@@ -617,8 +616,7 @@ projects:
 					AllowAllRepoSettings: true,
 				}
 
-				terraformClient := terraform_mocks.NewMockClient()
-				When(terraformClient.ListAvailableVersions(Any[logging.SimpleLogging]())).ThenReturn([]string{}, nil)
+				terraformClient := tfclientmocks.NewMockClient()
 
 				builder := events.NewProjectCommandBuilder(
 					false,
@@ -792,7 +790,7 @@ projects:
 
 			workingDir := mocks.NewMockWorkingDir()
 			When(workingDir.Clone(Any[logging.SimpleLogging](), Any[models.Repo](), Any[models.PullRequest](),
-				Any[string]())).ThenReturn(tmpDir, false, nil)
+				Any[string]())).ThenReturn(tmpDir, nil)
 			When(workingDir.GetWorkingDir(Any[models.Repo](), Any[models.PullRequest](), Any[string]())).ThenReturn(tmpDir, nil)
 			vcsClient := vcsmocks.NewMockClient()
 			When(vcsClient.GetModifiedFiles(Any[logging.SimpleLogging](), Any[models.Repo](),
@@ -806,8 +804,7 @@ projects:
 				AllowAllRepoSettings: true,
 			}
 
-			terraformClient := terraform_mocks.NewMockClient()
-			When(terraformClient.ListAvailableVersions(Any[logging.SimpleLogging]())).ThenReturn([]string{}, nil)
+			terraformClient := tfclientmocks.NewMockClient()
 
 			builder := events.NewProjectCommandBuilder(
 				false,
@@ -1081,6 +1078,78 @@ projects:
 				},
 			},
 		},
+		"autodiscover enabled but project excluded by autodiscover ignore": {
+			DirStructure: map[string]interface{}{
+				"project1": map[string]interface{}{
+					"main.tf": nil,
+				},
+				"project2": map[string]interface{}{
+					"main.tf": nil,
+				},
+				"project3": map[string]interface{}{
+					"main.tf": nil,
+				},
+			},
+			AtlantisYAML: `version: 3
+autodiscover:
+  mode: enabled
+  ignore_paths:
+  - project3
+projects:
+- name: project1-custom-name
+  dir: project1`,
+			ModifiedFiles: []string{"project1/main.tf", "project2/main.tf", "project3/main.tf"},
+			// project2 is autodiscovered, but autodiscover was ignored for project3
+			// project1 is configured explicitly so added
+			Exp: []expCtxFields{
+				{
+					ProjectName: "project1-custom-name",
+					RepoRelDir:  "project1",
+					Workspace:   "default",
+				},
+				{
+					ProjectName: "",
+					RepoRelDir:  "project2",
+					Workspace:   "default",
+				},
+			},
+		},
+		"autodiscover enabled but ignoring explicit project": {
+			DirStructure: map[string]interface{}{
+				"project1": map[string]interface{}{
+					"main.tf": nil,
+				},
+				"project2": map[string]interface{}{
+					"main.tf": nil,
+				},
+				"project3": map[string]interface{}{
+					"main.tf": nil,
+				},
+			},
+			AtlantisYAML: `version: 3
+autodiscover:
+  mode: enabled
+  ignore_paths:
+  - project1
+projects:
+- name: project1-custom-name
+  dir: project1`,
+			ModifiedFiles: []string{"project1/main.tf", "project2/main.tf"},
+			// project2 is autodiscover-ignored, but configured explicitly so added
+			// project1 is autodiscoverd as normal
+			Exp: []expCtxFields{
+				{
+					ProjectName: "project1-custom-name",
+					RepoRelDir:  "project1",
+					Workspace:   "default",
+				},
+				{
+					ProjectName: "",
+					RepoRelDir:  "project2",
+					Workspace:   "default",
+				},
+			},
+		},
 		"autodiscover enabled but project excluded by empty when_modified": {
 			DirStructure: map[string]interface{}{
 				"project1": map[string]interface{}{
@@ -1122,7 +1191,7 @@ projects:
 
 			workingDir := mocks.NewMockWorkingDir()
 			When(workingDir.Clone(Any[logging.SimpleLogging](), Any[models.Repo](), Any[models.PullRequest](),
-				Any[string]())).ThenReturn(tmpDir, false, nil)
+				Any[string]())).ThenReturn(tmpDir, nil)
 			When(workingDir.GetWorkingDir(Any[models.Repo](), Any[models.PullRequest](), Any[string]())).ThenReturn(tmpDir, nil)
 			vcsClient := vcsmocks.NewMockClient()
 			When(vcsClient.GetModifiedFiles(Any[logging.SimpleLogging](), Any[models.Repo](),
@@ -1136,8 +1205,7 @@ projects:
 				AllowAllRepoSettings: true,
 			}
 
-			terraformClient := terraform_mocks.NewMockClient()
-			When(terraformClient.ListAvailableVersions(Any[logging.SimpleLogging]())).ThenReturn([]string{}, nil)
+			terraformClient := tfclientmocks.NewMockClient()
 
 			builder := events.NewProjectCommandBuilder(
 				false,
@@ -1235,8 +1303,7 @@ func TestDefaultProjectCommandBuilder_BuildMultiApply(t *testing.T) {
 	globalCfgArgs := valid.GlobalCfgArgs{}
 	scope, _, _ := metrics.NewLoggingScope(logger, "atlantis")
 
-	terraformClient := terraform_mocks.NewMockClient()
-	When(terraformClient.ListAvailableVersions(Any[logging.SimpleLogging]())).ThenReturn([]string{}, nil)
+	terraformClient := tfclientmocks.NewMockClient()
 
 	builder := events.NewProjectCommandBuilder(
 		false,
@@ -1312,7 +1379,7 @@ projects:
 	Ok(t, err)
 
 	When(workingDir.Clone(Any[logging.SimpleLogging](), Any[models.Repo](), Any[models.PullRequest](),
-		Any[string]())).ThenReturn(repoDir, false, nil)
+		Any[string]())).ThenReturn(repoDir, nil)
 	When(workingDir.GetWorkingDir(Any[models.Repo](), Any[models.PullRequest](), Any[string]())).ThenReturn(repoDir, nil)
 
 	globalCfgArgs := valid.GlobalCfgArgs{
@@ -1322,8 +1389,7 @@ projects:
 	scope, _, _ := metrics.NewLoggingScope(logger, "atlantis")
 	userConfig := defaultUserConfig
 
-	terraformClient := terraform_mocks.NewMockClient()
-	When(terraformClient.ListAvailableVersions(Any[logging.SimpleLogging]())).ThenReturn([]string{}, nil)
+	terraformClient := tfclientmocks.NewMockClient()
 
 	builder := events.NewProjectCommandBuilder(
 		false,
@@ -1401,7 +1467,7 @@ func TestDefaultProjectCommandBuilder_EscapeArgs(t *testing.T) {
 
 			workingDir := mocks.NewMockWorkingDir()
 			When(workingDir.Clone(Any[logging.SimpleLogging](), Any[models.Repo](), Any[models.PullRequest](),
-				Any[string]())).ThenReturn(tmpDir, false, nil)
+				Any[string]())).ThenReturn(tmpDir, nil)
 			When(workingDir.GetWorkingDir(Any[models.Repo](), Any[models.PullRequest](), Any[string]())).ThenReturn(tmpDir, nil)
 			vcsClient := vcsmocks.NewMockClient()
 			When(vcsClient.GetModifiedFiles(Any[logging.SimpleLogging](), Any[models.Repo](),
@@ -1411,8 +1477,7 @@ func TestDefaultProjectCommandBuilder_EscapeArgs(t *testing.T) {
 				AllowAllRepoSettings: true,
 			}
 
-			terraformClient := terraform_mocks.NewMockClient()
-			When(terraformClient.ListAvailableVersions(Any[logging.SimpleLogging]())).ThenReturn([]string{}, nil)
+			terraformClient := tfclientmocks.NewMockClient()
 
 			builder := events.NewProjectCommandBuilder(
 				false,
@@ -1558,14 +1623,14 @@ projects:
 				Any[models.PullRequest]())).ThenReturn(testCase.ModifiedFiles, nil)
 			workingDir := mocks.NewMockWorkingDir()
 			When(workingDir.Clone(Any[logging.SimpleLogging](), Any[models.Repo](), Any[models.PullRequest](),
-				Any[string]())).ThenReturn(tmpDir, false, nil)
+				Any[string]())).ThenReturn(tmpDir, nil)
 			When(workingDir.GetWorkingDir(Any[models.Repo](), Any[models.PullRequest](), Any[string]())).ThenReturn(tmpDir, nil)
 
 			globalCfgArgs := valid.GlobalCfgArgs{
 				AllowAllRepoSettings: true,
 			}
 
-			terraformClient := terraform_mocks.NewMockClient()
+			terraformClient := tfclientmocks.NewMockClient()
 			When(terraformClient.DetectVersion(Any[logging.SimpleLogging](), Any[string]())).Then(func(params []Param) ReturnValues {
 				projectName := filepath.Base(params[1].(string))
 				testVersion := testCase.Exp[projectName]
@@ -1630,27 +1695,40 @@ projects:
 // Test that we don't clone the repo if there were no changes based on the atlantis.yaml file.
 func TestDefaultProjectCommandBuilder_SkipCloneNoChanges(t *testing.T) {
 	cases := []struct {
-		AtlantisYAML   string
-		ExpectedCtxs   int
-		ExpectedClones InvocationCountMatcher
-		ModifiedFiles  []string
+		AtlantisYAML             string
+		ExpectedCtxs             int
+		ExpectedClones           InvocationCountMatcher
+		ModifiedFiles            []string
+		IncludeGitUntrackedFiles bool
 	}{
 		{
 			AtlantisYAML: `
 version: 3
 projects:
 - dir: dir1`,
-			ExpectedCtxs:   0,
-			ExpectedClones: Never(),
-			ModifiedFiles:  []string{"dir2/main.tf"},
+			ExpectedCtxs:             0,
+			ExpectedClones:           Never(),
+			ModifiedFiles:            []string{"dir2/main.tf"},
+			IncludeGitUntrackedFiles: false,
+		},
+		{
+			AtlantisYAML: `
+version: 3
+projects:
+- dir: dir1`,
+			ExpectedCtxs:             0,
+			ExpectedClones:           Once(),
+			ModifiedFiles:            []string{"dir2/main.tf"},
+			IncludeGitUntrackedFiles: true,
 		},
 		{
 			AtlantisYAML: `
 version: 3
 parallel_plan: true`,
-			ExpectedCtxs:   0,
-			ExpectedClones: Once(),
-			ModifiedFiles:  []string{"README.md"},
+			ExpectedCtxs:             0,
+			ExpectedClones:           Once(),
+			ModifiedFiles:            []string{"README.md"},
+			IncludeGitUntrackedFiles: false,
 		},
 		{
 			AtlantisYAML: `
@@ -1659,9 +1737,10 @@ autodiscover:
   mode: enabled
 projects:
 - dir: dir1`,
-			ExpectedCtxs:   0,
-			ExpectedClones: Once(),
-			ModifiedFiles:  []string{"dir2/main.tf"},
+			ExpectedCtxs:             0,
+			ExpectedClones:           Once(),
+			ModifiedFiles:            []string{"dir2/main.tf"},
+			IncludeGitUntrackedFiles: false,
 		},
 	}
 
@@ -1684,8 +1763,7 @@ projects:
 			AllowAllRepoSettings: true,
 		}
 		scope, _, _ := metrics.NewLoggingScope(logger, "atlantis")
-		terraformClient := terraform_mocks.NewMockClient()
-		When(terraformClient.ListAvailableVersions(Any[logging.SimpleLogging]())).ThenReturn([]string{}, nil)
+		terraformClient := tfclientmocks.NewMockClient()
 
 		builder := events.NewProjectCommandBuilder(
 			false,
@@ -1706,7 +1784,7 @@ projects:
 			userConfig.AutoplanFileList,
 			userConfig.RestrictFileList,
 			userConfig.SilenceNoProjects,
-			userConfig.IncludeGitUntrackedFiles,
+			c.IncludeGitUntrackedFiles,
 			userConfig.AutoDiscoverMode,
 			scope,
 			terraformClient,
@@ -1743,7 +1821,7 @@ func TestDefaultProjectCommandBuilder_WithPolicyCheckEnabled_BuildAutoplanComman
 
 	workingDir := mocks.NewMockWorkingDir()
 	When(workingDir.Clone(Any[logging.SimpleLogging](), Any[models.Repo](), Any[models.PullRequest](),
-		Any[string]())).ThenReturn(tmpDir, false, nil)
+		Any[string]())).ThenReturn(tmpDir, nil)
 	vcsClient := vcsmocks.NewMockClient()
 	When(vcsClient.GetModifiedFiles(Any[logging.SimpleLogging](), Any[models.Repo](),
 		Any[models.PullRequest]())).ThenReturn([]string{"main.tf"}, nil)
@@ -1754,8 +1832,7 @@ func TestDefaultProjectCommandBuilder_WithPolicyCheckEnabled_BuildAutoplanComman
 	}
 
 	globalCfg := valid.NewGlobalCfgFromArgs(globalCfgArgs)
-	terraformClient := terraform_mocks.NewMockClient()
-	When(terraformClient.ListAvailableVersions(Any[logging.SimpleLogging]())).ThenReturn([]string{}, nil)
+	terraformClient := tfclientmocks.NewMockClient()
 
 	builder := events.NewProjectCommandBuilder(
 		true,
@@ -1843,8 +1920,7 @@ func TestDefaultProjectCommandBuilder_BuildVersionCommand(t *testing.T) {
 	globalCfgArgs := valid.GlobalCfgArgs{
 		AllowAllRepoSettings: false,
 	}
-	terraformClient := terraform_mocks.NewMockClient()
-	When(terraformClient.ListAvailableVersions(Any[logging.SimpleLogging]())).ThenReturn([]string{}, nil)
+	terraformClient := tfclientmocks.NewMockClient()
 
 	builder := events.NewProjectCommandBuilder(
 		false,
@@ -1962,7 +2038,7 @@ func TestDefaultProjectCommandBuilder_BuildPlanCommands_Single_With_RestrictFile
 
 			workingDir := mocks.NewMockWorkingDir()
 			When(workingDir.Clone(Any[logging.SimpleLogging](), Any[models.Repo](), Any[models.PullRequest](),
-				Any[string]())).ThenReturn(tmpDir, false, nil)
+				Any[string]())).ThenReturn(tmpDir, nil)
 			When(workingDir.GetWorkingDir(Any[models.Repo](), Any[models.PullRequest](), Any[string]())).ThenReturn(tmpDir, nil)
 			When(workingDir.GetGitUntrackedFiles(Any[logging.SimpleLogging](), Any[models.Repo](), Any[models.PullRequest](),
 				Any[string]())).ThenReturn(c.UntrackedFiles, nil)
@@ -1974,8 +2050,7 @@ func TestDefaultProjectCommandBuilder_BuildPlanCommands_Single_With_RestrictFile
 				Ok(t, err)
 			}
 
-			terraformClient := terraform_mocks.NewMockClient()
-			When(terraformClient.ListAvailableVersions(Any[logging.SimpleLogging]())).ThenReturn([]string{}, nil)
+			terraformClient := tfclientmocks.NewMockClient()
 
 			builder := events.NewProjectCommandBuilder(
 				false, // policyChecksSupported
@@ -2074,7 +2149,7 @@ func TestDefaultProjectCommandBuilder_BuildPlanCommands_with_IncludeGitUntracked
 
 			workingDir := mocks.NewMockWorkingDir()
 			When(workingDir.Clone(Any[logging.SimpleLogging](), Any[models.Repo](), Any[models.PullRequest](),
-				Any[string]())).ThenReturn(tmpDir, false, nil)
+				Any[string]())).ThenReturn(tmpDir, nil)
 			When(workingDir.GetWorkingDir(Any[models.Repo](), Any[models.PullRequest](), Any[string]())).ThenReturn(tmpDir, nil)
 			When(workingDir.GetGitUntrackedFiles(Any[logging.SimpleLogging](), Any[models.Repo](), Any[models.PullRequest](),
 				Any[string]())).ThenReturn(c.UntrackedFiles, nil)
@@ -2086,8 +2161,7 @@ func TestDefaultProjectCommandBuilder_BuildPlanCommands_with_IncludeGitUntracked
 				Ok(t, err)
 			}
 
-			terraformClient := terraform_mocks.NewMockClient()
-			When(terraformClient.ListAvailableVersions(Any[logging.SimpleLogging]())).ThenReturn([]string{}, nil)
+			terraformClient := tfclientmocks.NewMockClient()
 
 			builder := events.NewProjectCommandBuilder(
 				false, // policyChecksSupported

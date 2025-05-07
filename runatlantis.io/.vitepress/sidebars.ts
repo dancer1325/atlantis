@@ -37,13 +37,14 @@ const en = [
           { text: "Post Workflow Hooks", link: "/docs/post-workflow-hooks" },
           { text: "Conftest Policy Checking", link: "/docs/policy-checking" },
           { text: "Custom Workflows", link: "/docs/custom-workflows" },
+          { text: "Repo and Project Permissions", link: "/docs/repo-and-project-permissions" },
           { text: "Repo Level atlantis.yaml", link: "/docs/repo-level-atlantis-yaml" },
           { text: "Upgrading atlantis.yaml", link: "/docs/upgrading-atlantis-yaml" },
           { text: "Command Requirements", link: "/docs/command-requirements" },
           { text: "Checkout Strategy", link: "/docs/checkout-strategy" },
           { text: "Terraform Versions", link: "/docs/terraform-versions" },
           { text: "Terraform Cloud", link: "/docs/terraform-cloud" },
-          { text: "Using Slack Hooks", link: "/docs/using-slack-hooks" },
+          { text: "Sending Notifications via Webhooks", link: "/docs/sending-notifications-via-webhooks" },
           { text: "Stats", link: "/docs/stats" },
           { text: "FAQ", link: "/docs/faq" },
         ]
@@ -100,6 +101,20 @@ const en = [
     link: "/blog",
     collapsed: false,
     items: [
+      {
+        text: "2024",
+        collapsed: true,
+        items: [
+          {
+            text: "Integrating Atlantis with OpenTofu",
+            link: "/blog/2024/integrating-atlantis-with-opentofu"
+          },
+          {
+            text: "Atlantis User Survey Results",
+            link: "/blog/2024/april-2024-survey-results"
+          },
+        ]
+      },
       {
         text: "2019",
         collapsed: true,

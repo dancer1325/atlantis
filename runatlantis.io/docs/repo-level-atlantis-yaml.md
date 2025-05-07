@@ -44,7 +44,7 @@ in your repo.
 If you have many directories with Terraform configuration, each directory will
 need to be defined.
 
-This behavior can be overriden by setting `autodiscover.mode` to
+This behavior can be overridden by setting `autodiscover.mode` to
 `enabled` in which case Atlantis will still try to discover projects which were not
 explicitly configured. If the directory of any discovered project conflicts with a
 manually configured project, the manually configured project will take precedence.
@@ -57,6 +57,8 @@ version: 3
 automerge: true
 autodiscover:
   mode: auto
+  ignore_paths:
+  - some/path
 delete_source_branch_on_merge: true
 parallel_plan: true
 parallel_apply: true
@@ -66,6 +68,7 @@ projects:
   branch: /main/
   dir: .
   workspace: default
+  terraform_distribution: terraform
   terraform_version: v0.11.0
   delete_source_branch_on_merge: true
   repo_locking: true # deprecated: use repo_locks instead
@@ -78,6 +81,7 @@ projects:
   plan_requirements: [mergeable, approved, undiverged]
   apply_requirements: [mergeable, approved, undiverged]
   import_requirements: [mergeable, approved, undiverged]
+  silence_pr_comments: ["apply"]
   execution_order_group: 1
   depends_on:
     - project-1
@@ -261,6 +265,20 @@ See [Custom Workflow Use Cases: Terragrunt](custom-workflows.md#terragrunt)
 
 See [Custom Workflow Use Cases: Running custom commands](custom-workflows.md#running-custom-commands)
 
+### Terraform Distributions
+
+If you'd like to use a different distribution of Terraform than what is set
+by the `--default-tf-version` flag, then set the `terraform_distribution` key:
+
+```yaml
+version: 3
+projects:
+- dir: project1
+  terraform_distribution: opentofu
+```
+
+Atlantis will automatically download and use this distribution. Valid values are `terraform` and `opentofu`.
+
 ### Terraform Versions
 
 If you'd like to use a different version of Terraform than what is in Atlantis'
@@ -389,6 +407,15 @@ the manual configuration will take precedence.
 Use this feature when some projects require specific configuration in a repo with many projects yet
 it's still desirable for Atlantis to plan/apply for projects not enumerated in the config.
 
+```yaml
+autodiscover:
+  mode: "enabled"
+  ignore_paths:
+  - dir/*
+```
+
+Autodiscover can also be configured to skip over directories that match a path glob (as defined [here](https://pkg.go.dev/github.com/bmatcuk/doublestar/v4))
+
 ### Custom Backend Config
 
 See [Custom Workflow Use Cases: Custom Backend Config](custom-workflows.md#custom-backend-config)
@@ -433,6 +460,7 @@ terraform_version: 0.11.0
 plan_requirements: ["approved"]
 apply_requirements: ["approved"]
 import_requirements: ["approved"]
+silence_pr_comments: ["apply"]
 workflow: myworkflow
 ```
 
@@ -452,6 +480,7 @@ workflow: myworkflow
 | plan_requirements<br />*(restricted)*   | array\[string\]         | none            | no       | Requirements that must be satisfied before `atlantis plan` can be run. Currently the only supported requirements are `approved`, `mergeable`, and `undiverged`. See [Command Requirements](command-requirements.md) for more details.   |
 | apply_requirements<br />*(restricted)*  | array\[string\]         | none            | no       | Requirements that must be satisfied before `atlantis apply` can be run. Currently the only supported requirements are `approved`, `mergeable`, and `undiverged`. See [Command Requirements](command-requirements.md) for more details.  |
 | import_requirements<br />*(restricted)* | array\[string\]         | none            | no       | Requirements that must be satisfied before `atlantis import` can be run. Currently the only supported requirements are `approved`, `mergeable`, and `undiverged`. See [Command Requirements](command-requirements.md) for more details. |
+| silence_pr_comments                     | array\[string\]         | none            | no       | Silence PR comments from defined stages while preserving PR status checks. Supported values are: `plan`, `apply`.                                                                                                                       |
 | workflow <br />*(restricted)*           | string                  | none            | no       | A custom workflow. If not specified, Atlantis will use its default workflow.                                                                                                                                                              |
 
 ::: tip

@@ -3,9 +3,10 @@ import footnote from 'markdown-it-footnote'
 import { defineConfig } from 'vitepress';
 import * as navbars from "./navbars";
 import * as sidebars from "./sidebars";
+import { withMermaid } from "vitepress-plugin-mermaid";
 
 // https://vitepress.dev/reference/site-config
-export default defineConfig({
+const config = defineConfig({
     title: 'Atlantis',
     description: 'Atlantis: Terraform Pull Request Automation',
     lang: 'en-US',
@@ -51,10 +52,13 @@ export default defineConfig({
             }
         },
         socialLinks: [
-          { icon: "slack", link: "https://join.slack.com/t/atlantis-community/shared_invite/zt-9xlxtxtc-CUSKB1ATt_sQy6um~LDPNw" },
+          { icon: "slack", link: "https://slack.cncf.io/" },
           { icon: "twitter", link: "https://twitter.com/runatlantis" },
           { icon: "github", link: "https://github.com/runatlantis/atlantis" },
         ],
+        footer: {
+            message: 'The Linux Foundation® (TLF) has registered trademarks and uses trademarks. For a list of TLF trademarks, see <a href="https://www.linuxfoundation.org/legal/trademark-usage">Trademark Usage</a>.',
+        },
     },
     // SEO Improvement - sitemap.xml & robots.txt
     buildEnd: async ({ outDir }) => {
@@ -89,7 +93,7 @@ export default defineConfig({
         // google analytics
         [
             'script',
-            { async: '', src: 'https://www.googletagmanager.com/gtag/js?id=UA-6850151-3' }
+            { async: '', src: 'https://www.googletagmanager.com/gtag/js?id=G-PGYBJTZMP2' }
         ],
         [
             'script',
@@ -98,7 +102,7 @@ export default defineConfig({
             function gtag(){dataLayer.push(arguments);}
             gtag('js', new Date());
 
-            gtag('config', 'UA-6850151-3');`
+            gtag('config', 'G-PGYBJTZMP2');`
         ],
         [
             'script',
@@ -128,3 +132,5 @@ export default defineConfig({
         }
     }
 })
+
+export default withMermaid(config)

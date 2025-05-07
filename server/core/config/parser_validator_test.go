@@ -1,7 +1,9 @@
 package config_test
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -50,14 +52,14 @@ func TestHasRepoCfg_InvalidFileExtension(t *testing.T) {
 func TestParseRepoCfg_DirDoesNotExist(t *testing.T) {
 	r := config.ParserValidator{}
 	_, err := r.ParseRepoCfg("/not/exist", globalCfg, "", "")
-	Assert(t, os.IsNotExist(err), "exp not exist err")
+	Assert(t, errors.Is(err, fs.ErrNotExist), "exp not exist err")
 }
 
 func TestParseRepoCfg_FileDoesNotExist(t *testing.T) {
 	tmpDir := t.TempDir()
 	r := config.ParserValidator{}
 	_, err := r.ParseRepoCfg(tmpDir, globalCfg, "", "")
-	Assert(t, os.IsNotExist(err), "exp not exist err")
+	Assert(t, errors.Is(err, fs.ErrNotExist), "exp not exist err")
 }
 
 func TestParseRepoCfg_BadPermissions(t *testing.T) {
@@ -608,6 +610,31 @@ workflows:
 				Workflows: map[string]valid.Workflow{
 					"myworkflow": defaultWorkflow("myworkflow"),
 				},
+			},
+		},
+		{
+			description: "project field with terraform_distribution set to opentofu",
+			input: `
+version: 3
+projects:
+- dir: .
+  workspace: myworkspace
+  terraform_distribution: opentofu
+`,
+			exp: valid.RepoCfg{
+				Version: 3,
+				Projects: []valid.Project{
+					{
+						Dir:                   ".",
+						Workspace:             "myworkspace",
+						TerraformDistribution: String("opentofu"),
+						Autoplan: valid.Autoplan{
+							WhenModified: raw.DefaultAutoPlanWhenModified,
+							Enabled:      true,
+						},
+					},
+				},
+				Workflows: make(map[string]valid.Workflow),
 			},
 		},
 		{
@@ -1286,7 +1313,7 @@ func TestParseGlobalCfg(t *testing.T) {
 			input: `repos:
 - id: /.*/
   allowed_overrides: [invalid]`,
-			expErr: "repos: (0: (allowed_overrides: \"invalid\" is not a valid override, only \"plan_requirements\", \"apply_requirements\", \"import_requirements\", \"workflow\", \"delete_source_branch_on_merge\", \"repo_locking\", \"repo_locks\", \"policy_check\", and \"custom_policy_check\" are supported.).).",
+			expErr: "repos: (0: (allowed_overrides: \"invalid\" is not a valid override, only \"plan_requirements\", \"apply_requirements\", \"import_requirements\", \"workflow\", \"delete_source_branch_on_merge\", \"repo_locking\", \"repo_locks\", \"policy_check\", \"custom_policy_check\", and \"silence_pr_comments\" are supported.).).",
 		},
 		"invalid plan_requirement": {
 			input: `repos:
@@ -1306,8 +1333,14 @@ func TestParseGlobalCfg(t *testing.T) {
   import_requirements: [invalid]`,
 			expErr: "repos: (0: (import_requirements: \"invalid\" is not a valid import_requirement, only \"approved\", \"mergeable\" and \"undiverged\" are supported.).).",
 		},
+		"invalid silence_pr_comments": {
+			input: `repos:
+- id: /.*/
+  silence_pr_comments: [invalid]`,
+			expErr: "server-side repo config 'silence_pr_comments' key value of 'invalid' is not supported, supported values are [plan, apply]",
+		},
 		"disable autodiscover": {
-			input: `repos: 
+			input: `repos:
 - id: /.*/
   autodiscover:
     mode: disabled`,
@@ -1320,10 +1353,13 @@ func TestParseGlobalCfg(t *testing.T) {
 					},
 				},
 				Workflows: defaultCfg.Workflows,
+				TeamAuthz: valid.TeamAuthz{
+					Args: make([]string, 0),
+				},
 			},
 		},
 		"disable repo locks": {
-			input: `repos: 
+			input: `repos:
 - id: /.*/
   repo_locks:
     mode: disabled`,
@@ -1336,6 +1372,9 @@ func TestParseGlobalCfg(t *testing.T) {
 					},
 				},
 				Workflows: defaultCfg.Workflows,
+				TeamAuthz: valid.TeamAuthz{
+					Args: make([]string, 0),
+				},
 			},
 		},
 		"no workflows key": {
@@ -1356,6 +1395,9 @@ workflows:
 					"default": defaultCfg.Workflows["default"],
 					"name":    defaultWorkflow("name"),
 				},
+				TeamAuthz: valid.TeamAuthz{
+					Args: make([]string, 0),
+				},
 			},
 		},
 		"workflow stages empty": {
@@ -1373,6 +1415,9 @@ workflows:
 				Workflows: map[string]valid.Workflow{
 					"default": defaultCfg.Workflows["default"],
 					"name":    defaultWorkflow("name"),
+				},
+				TeamAuthz: valid.TeamAuthz{
+					Args: make([]string, 0),
 				},
 			},
 		},
@@ -1396,6 +1441,9 @@ workflows:
 				Workflows: map[string]valid.Workflow{
 					"default": defaultCfg.Workflows["default"],
 					"name":    defaultWorkflow("name"),
+				},
+				TeamAuthz: valid.TeamAuthz{
+					Args: make([]string, 0),
 				},
 			},
 		},
@@ -1503,6 +1551,9 @@ policies:
 						},
 					},
 				},
+				TeamAuthz: valid.TeamAuthz{
+					Args: make([]string, 0),
+				},
 			},
 		},
 		"id regex with trailing slash": {
@@ -1519,6 +1570,9 @@ repos:
 				},
 				Workflows: map[string]valid.Workflow{
 					"default": defaultCfg.Workflows["default"],
+				},
+				TeamAuthz: valid.TeamAuthz{
+					Args: make([]string, 0),
 				},
 			},
 		},
@@ -1538,6 +1592,9 @@ repos:
 				},
 				Workflows: map[string]valid.Workflow{
 					"default": defaultCfg.Workflows["default"],
+				},
+				TeamAuthz: valid.TeamAuthz{
+					Args: make([]string, 0),
 				},
 			},
 		},
@@ -1613,6 +1670,9 @@ workflows:
 							},
 						},
 					},
+				},
+				TeamAuthz: valid.TeamAuthz{
+					Args: make([]string, 0),
 				},
 			},
 		},
@@ -1834,6 +1894,9 @@ func TestParserValidator_ParseGlobalCfgJSON(t *testing.T) {
 							ApproveCount: 1,
 						},
 					},
+				},
+				TeamAuthz: valid.TeamAuthz{
+					Args: make([]string, 0),
 				},
 			},
 		},

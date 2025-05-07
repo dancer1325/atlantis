@@ -99,6 +99,9 @@ repos:
   # autodiscover defines how atlantis should automatically discover projects in this repository.
   autodiscover:
     mode: auto
+    # Optionally ignore some paths for autodiscovery by a glob path
+    ignore_paths:
+      - foo/*
 
   # id can also be an exact match.
 - id: github.com/myorg/specific-repo
@@ -480,12 +483,13 @@ Each servers handle different repository config files.
 
 ### Top-Level Keys
 
-| Key       | Type                                                  | Default   | Required | Description                                                                           |
-|-----------|-------------------------------------------------------|-----------|----------|---------------------------------------------------------------------------------------|
-| repos     | array[[Repo](#repo)]                                  | see below | no       | List of repos to apply settings to.                                                   |
-| workflows | map[string: [Workflow](custom-workflows.md#workflow)] | see below | no       | Map from workflow name to workflow. Workflows override the default Atlantis commands. |
-| policies  | Policies.                                             | none      | no       | List of policy sets to run and associated metadata                                    |
-| metrics   | Metrics.                                              | none      | no       | Map of metric configuration                                                           |
+| Key        | Type                                                  | Default   | Required | Description                                                                           |
+|------------|-------------------------------------------------------|-----------|----------|---------------------------------------------------------------------------------------|
+| repos      | array[[Repo](#repo)]                                  | see below | no       | List of repos to apply settings to.                                                   |
+| workflows  | map[string: [Workflow](custom-workflows.md#workflow)] | see below | no       | Map from workflow name to workflow. Workflows override the default Atlantis commands. |
+| policies   | Policies.                                             | none      | no       | List of policy sets to run and associated metadata                                    |
+| metrics    | Metrics.                                              | none      | no       | Map of metric configuration                                                           |
+| team_authz | [TeamAuthz](#teamauthz)                               | none      | no       | Configuration of team permission checking                                             |
 
 ::: tip A Note On Defaults
 
@@ -542,6 +546,7 @@ If you set a workflow with the key `default`, it will override this.
 | policy_check                  | bool                    | false           | no       | Whether or not to run policy checks on this repository.                                                                                                                                                                                                                                                   |
 | custom_policy_check           | bool                    | false           | no       | Whether or not to enable custom policy check tools outside of Conftest on this repository.                                                                                                                                                                                                                |
 | autodiscover                  | AutoDiscover            | none            | no       | Auto discover settings for this repo                                                                                                                                                                                                                                                                      |
+| silence_pr_comments           | []string                | none            | no       | Silence PR comments from defined stages while preserving PR status checks. Useful in large environments with many Atlantis instances and/or projects, when the comments are too big and too many, therefore it is preferable to rely solely on PR status checks. Supported values are: `plan`, `apply`.   |
 
 :::tip Notes
 
@@ -606,11 +611,12 @@ mode: on_apply
 
 ### PolicySet
 
-| Key    | Type   | Default | Required | Description                            |
-| ------ | ------ | ------- | -------- | -------------------------------------- |
-| name   | string | none    | yes      | unique name for the policy set         |
-| path   | string | none    | yes      | path to the rego policies directory    |
-| source | string | none    | yes      | only `local` is supported at this time |
+| Key                  | Type   | Default | Required | Description                                                                                                   |
+| ------               | ------ | ------- | -------- | --------------------------------------------------------------------------------------------------------------|
+| name                 | string | none    | yes      | unique name for the policy set                                                                                |
+| path                 | string | none    | yes      | path to the rego policies directory                                                                           |
+| source               | string | none    | yes      | only `local` is supported at this time                                                                        |
+| prevent_self_approve | bool   | false   | no       | Whether or not the author of PR can approve policies. Defaults to `false` (the author must also be in owners) |
 
 ### Metrics
 
@@ -631,3 +637,10 @@ mode: on_apply
 | Key      | Type   | Default | Required | Description                            |
 | -------- | ------ | ------- | -------- | -------------------------------------- |
 | endpoint | string | none    | yes      | path to metrics endpoint               |
+
+### TeamAuthz
+
+| Key     | Type     | Default | Required | Description                                 |
+|---------|----------|---------|----------|---------------------------------------------|
+| command | string   | none    | yes      | full path to external authorization command |
+| args    | []string | none    | no       | optional arguments to pass to `command`     |

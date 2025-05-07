@@ -1,18 +1,17 @@
-# Configuring Webhooks
+# Configuring Webhooks | your Git host
 
-Atlantis needs to receive Webhooks from your Git host so that it can respond to pull request events.
+* Reason: 🧠Atlantis -- needs to 
+  * receive -- Webhooks
+  * respond to -- PR events 🧠
 
-:::tip Prerequisites
-
-* You have created an [access credential](access-credentials.md)
-* You have created a [webhook secret](webhook-secrets.md)
-* You have [deployed](deployment.md) Atlantis and have a url for it
-:::
-
-See the instructions for your specific provider below.
+* PREREQUISITES
+  * [access credential](access-credentials.md)
+  * [webhook secret](webhook-secrets.md)
+  * Atlantis [deployed](deployment.md) / has an url for it
 
 ## GitHub/GitHub Enterprise
 
+* TODO:
 You can install your webhook at the [organization](https://docs.github.com/en/get-started/learning-about-github/types-of-github-accounts) level, or for each individual repository.
 
 ::: tip NOTE
